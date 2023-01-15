@@ -10,6 +10,8 @@ from oscrypto import util as crypto_utils
 import asyncio
 import torch
 
+from detection.ctd_utils import TextBlock
+from typing import List, Union
 from detection import DETECTORS, dispatch as dispatch_detection, prepare as prepare_detection
 from detection.ctd_utils.textblock import visualize_textblocks
 from ocr import OCRS, dispatch as dispatch_ocr, prepare as prepare_ocr
@@ -125,6 +127,16 @@ async def infer(
 	if not dst_image_name:
 		dst_image_name = f'result/{task_id}/final.png'
 
+	if 'boxvalue' in options:
+		boxvalue = float(options['boxvalue'])
+		print(f'Box Value Specified as {boxvalue}')
+		args.box_threshold = boxvalue
+
+	if 'textvalue' in options:
+		textvalue = float(options['textvalue'])
+		print(f'Text Value Specified as {textvalue}')
+		args.text_threshold = textvalue
+
 	print(f' -- Detection resolution {img_detect_size}')
 	print(f' -- Detector using {detector}')
 	print(f' -- Render text direction is {render_text_direction_overwrite}')
@@ -171,11 +183,11 @@ async def infer(
 		if mode == 'web' and task_id:
 			update_state(task_id, nonce, 'mask_generation')
 		mask = await dispatch_mask_refinement(text_regions, img_rgb, mask)
-
+	
 	# in web mode, we can start online translation tasks async
 	if mode == 'web' and task_id and options.get('translator') not in OFFLINE_TRANSLATORS:
 		update_state(task_id, nonce, 'translating')
-		requests.post(f'http://{args.host}:{args.port}/request-translation-internal', json = {'task_id': task_id, 'nonce': nonce, 'texts': [r.get_text() for r in text_regions]}, timeout = 20)
+		requests.post(f'http://{args.host}:{args.port}/request-translation-internal', json = {'task_id': task_id, 'nonce': nonce, 'texts': [{'s': r.get_text(), 'f': str(r.font_size)} for r in text_regions]}, timeout = 20)
 
 	if args.verbose:
 		cv2.imwrite(f'result/{task_id}/mask_final.png', mask)
@@ -213,8 +225,45 @@ async def infer(
 						update_state(task_id, nonce, 'error-lang')
 						return
 				break
+			if 'result_preview' in ret:
+				print(ret['result_preview'])
+				translated_sentences = ret['result_preview']
+				output = await GenerateRender(translated_sentences, mode, task_id, nonce, tgt_lang, img_inpainted, img_rgb, text_regions, render_text_direction_overwrite)
+			
+				print(' -- Saving results')
+				img_pil = dump_image(output, img_alpha)
+				img_pil.save(f'result/{task_id}/final_preview.png')
+			
+				if mode == 'web' and task_id:
+					update_state(task_id, nonce, 'finished-preview')
+			
+				if isinstance(translated_sentences, str):
+					if translated_sentences == 'error':
+						update_state(task_id, nonce, 'error-lang')
+						return
 			await asyncio.sleep(0.01)
 
+	print(' -- Rendering translated text')
+	output = await GenerateRender(translated_sentences, mode, task_id, nonce, tgt_lang, img_inpainted, img_rgb, text_regions, render_text_direction_overwrite)
+
+	print(' -- Saving results')
+	img_pil = dump_image(output, img_alpha)
+	img_pil.save(dst_image_name)
+
+	if mode == 'web' and task_id:
+		update_state(task_id, nonce, 'finished')
+
+async def GenerateRender(
+	translated_sentences: List[str],
+	mode: str,
+	task_id: str,
+	nonce: str,
+	tgt_lang: str,
+	img_inpainted: np.ndarray,
+	img_rgb: np.ndarray,
+	text_regions: List[TextBlock],
+	render_text_direction_overwrite: str,
+):
 	print(' -- Rendering translated text')
 	if translated_sentences == None:
 		print("No text found!")
@@ -236,12 +285,7 @@ async def infer(
 	else:
 		output = await dispatch_ctd_render(np.copy(img_inpainted), args.text_mag_ratio, translated_sentences, text_regions, render_text_direction_overwrite, tgt_lang, args.font_size_offset)
 
-	print(' -- Saving results')
-	img_pil = dump_image(output, img_alpha)
-	img_pil.save(dst_image_name)
-
-	if mode == 'web' and task_id:
-		update_state(task_id, nonce, 'finished')
+	return output
 
 
 async def infer_safe(

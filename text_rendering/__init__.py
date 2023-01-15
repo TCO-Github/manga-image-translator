@@ -189,15 +189,18 @@ async def dispatch_eng_render(img_canvas: np.ndarray, original_img: np.ndarray, 
 			x2 = np.max(region.pts[:, 0])
 			y1 = np.min(region.pts[:, 1])
 			y2 = np.max(region.pts[:, 1])
-			font_size = region.font_size * 0.75		# default detector generate larger text polygons in my exp
+			print(f"FontSize: " + str(tr['f'] * 0.75))
+			print(f"Translation: " + str(tr['t']))
+			font_size = tr['f'] * 0.75		# default detector generate larger text polygons in my exp
 			angle = np.rad2deg(region.angle) - 90
 			if abs(angle) < 3:
 				angle = 0
-			blk = TextBlock([x1, y1, x2, y2], lines=[region.pts], translation=tr, angle=angle, font_size=font_size)
+			blk = TextBlock([x1, y1, x2, y2], lines=[region.pts], translation=tr['t'], angle=angle, font_size=font_size)
 			blk_list.append(blk)
 		return render_textblock_list_eng(img_canvas, blk_list, font_path, size_tol=1.2, original_img=original_img, downscale_constraint=0.5)
 
 	for blk, tr in zip(text_regions, translated_sentences):
-		blk.translation = tr
+		blk.translation = tr['t']
+		blk.font_size = float(tr['f'])
 
 	return render_textblock_list_eng(img_canvas, text_regions, font_path, size_tol=1.2, original_img=original_img, downscale_constraint=0.8)
