@@ -264,6 +264,13 @@ async def GenerateRender(
 	text_regions: List[TextBlock],
 	render_text_direction_overwrite: str,
 ):
+	print(' -- Updating Font Size')
+	for i, textregion in enumerate(text_regions):
+		textregion.font_size = float(translated_sentences[i]['f'])
+
+	print(' -- Updating translated_sentences')
+	translated_sentences = [r['t'] for r in translated_sentences]
+
 	print(' -- Rendering translated text')
 	if translated_sentences == None:
 		print("No text found!")
