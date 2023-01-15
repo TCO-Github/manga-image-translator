@@ -58,6 +58,22 @@ async def result_async(request):
 	im.save(stream, "PNG")
 	return web.Response(body=stream.getvalue(), content_type='image/png')
 
+@routes.get("/previewresult/{taskid}")
+async def previewresult_async(request):
+	print("Sending final_preview.png to frontend")
+	im = Image.open("result/" + request.match_info.get('taskid') + "/final_preview.png")
+	stream = BytesIO()
+	im.save(stream, "PNG")
+	return web.Response(body=stream.getvalue(), content_type='image/png')
+
+@routes.get("/bboxesresult/{taskid}")
+async def bboxesresultresult_async(request):
+	print("Sending bboxes.png to frontend")
+	im = Image.open("result/" + request.match_info.get('taskid') + "/bboxes.png")
+	stream = BytesIO()
+	im.save(stream, "PNG")
+	return web.Response(body=stream.getvalue(), content_type='image/png')
+
 @routes.get("/queue-size")
 async def queue_size_async(request):
 	return web.json_response({'size' : len(QUEUE)})
@@ -69,6 +85,8 @@ async def handle_post(request):
 	target_language = 'CHS'
 	detector = 'default'
 	direction = 'auto'
+	boxvalue = 0.7
+	textvalue = 0.5
 	if 'tgt_lang' in data:
 		target_language = data['tgt_lang'].upper()
 		if target_language not in VALID_LANGUAGES:
@@ -92,6 +110,10 @@ async def handle_post(request):
 	if 'file' in data:
 		file_field = data['file']
 		content = file_field.file.read()
+	if 'boxvalue' in data:
+		boxvalue = data['boxvalue']
+	if 'textvalue' in data:
+		textvalue = data['textvalue']
 	elif 'url' in data:
 		from aiohttp import ClientSession
 		async with ClientSession() as session:
@@ -108,7 +130,7 @@ async def handle_post(request):
 			return web.json_response({'status': 'error-too-large'})
 	except Exception:
 		return web.json_response({'status': 'error-img-corrupt'})
-	return img, size, selected_translator, target_language, detector, direction
+	return img, size, selected_translator, target_language, detector, direction, boxvalue, textvalue
 
 @routes.post("/run")
 async def run_async(request):
@@ -119,8 +141,8 @@ async def run_async(request):
 		return x
 	task_id = f'{phash(img, hash_size = 16)}-{size}-{selected_translator}-{target_language}-{detector}-{direction}'
 	print(f'New `run` task {task_id}')
-	if os.path.exists(f'result/{task_id}/final.png'):
-		return web.json_response({'task_id' : task_id, 'status': 'successful'})
+	if os.path.exists(f'result/{task_id}/final_preview.png'):
+		return web.json_response({'task_id' : task_id, 'status': 'pending'})
 	# elif os.path.exists(f'result/{task_id}'):
 	# 	# either image is being processed or error occurred 
 	# 	if task_id not in TASK_STATES:
@@ -179,6 +201,7 @@ async def machine_trans_task(task_id, texts, translator = 'youdao', target_langu
 		TASK_DATA[task_id]['trans_result'] = []
 
 async def manual_trans_task(task_id, texts):
+	#Add Text to TaskID to show on UI
 	if task_id not in TASK_DATA:
 		TASK_DATA[task_id] = {}
 	if texts:
@@ -207,10 +230,26 @@ async def post_translation_result(request):
 			del TASK_STATES[task_id]
 			del TASK_DATA[task_id]
 			return ret
+	if 'trans_result_preview' in rqjson and 'task_id' in rqjson:
+		task_id = rqjson['task_id']
+		if task_id in TASK_DATA:
+			trans_result = [r['t'] for r in rqjson['trans_result_preview']]
+			TASK_DATA[task_id]['trans_result_preview'] = trans_result
+			while True:
+				await asyncio.sleep(0.1)
+				if TASK_STATES[task_id] in ['error', 'error-lang', 'error-no-txt']:
+					ret = web.json_response({'task_id': task_id, 'status': 'error'})
+					break
+				if TASK_STATES[task_id] == 'finished-preview':
+					print('finished-preview in TASK_STATES, returning task with status pending')
+					ret = web.json_response({'task_id': task_id, 'status': 'pending'})
+					break
+			return ret
 	return web.json_response({})
 
 @routes.post("/request-translation-internal")
 async def request_translation_internal(request):
+	#Manual Translation, Get Texts to translate and send to UI
 	global NONCE
 	rqjson = (await request.json())
 	if constant_compare(rqjson.get('nonce'), NONCE):
@@ -218,7 +257,7 @@ async def request_translation_internal(request):
 		if task_id in TASK_DATA:
 			if TASK_DATA[task_id].get('manual', False):
 				# manual translation
-				asyncio.gather(manual_trans_task(task_id, rqjson['texts']))
+				asyncio.gather(manual_trans_task(task_id, rqjson['texts'])) #TO-DO - Add More Stuff here for more control on UI
 			else:
 				# using machine translation
 				asyncio.gather(machine_trans_task(task_id, rqjson['texts'], TASK_DATA[task_id]['translator'], TASK_DATA[task_id]['tgt']))
@@ -228,11 +267,23 @@ async def request_translation_internal(request):
 async def get_translation_internal(request):
 	global NONCE
 	rqjson = (await request.json())
+
 	if constant_compare(rqjson.get('nonce'), NONCE):
 		task_id = rqjson['task_id']
+
 		if task_id in TASK_DATA:
 			if 'trans_result' in TASK_DATA[task_id]:
+				print("Debug - rqjson")
+				print(rqjson)
+				print("Debug - Task_Data")
+				print(TASK_DATA[task_id])
 				return web.json_response({'result': TASK_DATA[task_id]['trans_result']})
+			if 'trans_result_preview' in TASK_DATA[task_id]:
+				print("Debug - rqjson preview")
+				print(rqjson)
+				print("Debug - Task_Data preview")
+				print(TASK_DATA[task_id])
+				return web.json_response({'result_preview': TASK_DATA[task_id]['trans_result_preview']})
 	return web.json_response({})
 
 @routes.get("/task-state")
@@ -261,10 +312,13 @@ async def post_task_update_async(request):
 	rqjson = (await request.json())
 	if constant_compare(rqjson.get('nonce'), NONCE):
 		task_id = rqjson['task_id']
+		print(f"debug task-update-internal task_id: {task_id} with state {rqjson['state']}")
 		if task_id in TASK_STATES and task_id in TASK_DATA:
 			TASK_STATES[task_id] = rqjson['state']
 			if rqjson['state'] in ['finished', 'error', 'error-lang', 'error-no-txt'] and not TASK_DATA[task_id].get('manual', False):
 				NUM_ONGOING_TASKS -= 1
+			if rqjson['state'] in ['finished-preview']:
+				del TASK_DATA[task_id]['trans_result_preview']
 			print(f'Task state {task_id} to {TASK_STATES[task_id]}')
 	return web.json_response({})
 
@@ -296,30 +350,36 @@ async def submit_async(request):
 @routes.post("/manual-translate")
 async def manual_translate_async(request):
 	x = await handle_post(request)
+
 	if isinstance(x, tuple):
-		img, size, selected_translator, target_language, detector, direction = x
+		img, size, selected_translator, target_language, detector, direction, boxvalue, textvalue = x
 	else:
 		return x
+		
 	task_id = crypto_utils.rand_bytes(16).hex()
+
 	print(f'New `manual-translate` task {task_id}')
 	os.makedirs(f'result/{task_id}/', exist_ok=True)
 	img.save(f'result/{task_id}/input.png')
 	QUEUE.append(task_id)
-	TASK_DATA[task_id] = {'size': size, 'manual': True, 'detector': detector, 'direction': direction, 'created_at': time.time()}
+	TASK_DATA[task_id] = {'size': size, 'manual': True, 'detector': detector, 'direction': direction, 'created_at': time.time(), 'boxvalue': boxvalue, 'textvalue': textvalue}
 	TASK_STATES[task_id] = 'pending'
+
 	while True:
 		await asyncio.sleep(1)
 		if 'trans_request' in TASK_DATA[task_id]:
 			return web.json_response({'task_id' : task_id, 'status': 'pending', 'trans_result': TASK_DATA[task_id]['trans_request']})
+		if 'trans_request_preview' in TASK_DATA[task_id]:
+			return web.json_response({'task_id' : task_id, 'status': 'preview', 'trans_result': TASK_DATA[task_id]['trans_request']})
 		if TASK_STATES[task_id] in ['error', 'error-lang']:
 			break
 		if TASK_STATES[task_id] == 'finished':
 			# no texts detected
 			return web.json_response({'task_id' : task_id, 'status': 'successful'})
+
 	return web.json_response({'task_id' : task_id, 'status': 'error'})
 
 app.add_routes(routes)
-
 async def start_async_app(host, port, nonce):
 	global NONCE
 	NONCE = nonce

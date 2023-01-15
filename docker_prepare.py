@@ -1,7 +1,6 @@
 import asyncio
 
 from utils import ModelWrapper
-from detection import DETECTORS
 from translators import TRANSLATORS
 from ocr import OCRS
 from inpainting import INPAINTERS
@@ -19,7 +18,6 @@ async def main():
     k: v for k, v in TRANSLATORS.items() 
       if k not in ['offline_big', 'nllb_big', 'sugoi_small', 'sugoi_big']
   })
-  await download(DETECTORS)
   await download(OCRS)
   await download(INPAINTERS)
   await download(UPSCALERS)

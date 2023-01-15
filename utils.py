@@ -1,6 +1,6 @@
 import os
 import stat
-from typing import List, Callable, Tuple
+from typing import List
 import numpy as np
 import cv2
 import functools
@@ -16,19 +16,18 @@ import re
 import torch
 import shutil
 import filecmp
-import einops
 
 try:
-	  functools.cached_property
+  	functools.cached_property
 except AttributeError: # Supports Python versions below 3.8
 	from backports.cached_property import cached_property
 	functools.cached_property = cached_property
 
 
 def chunks(lst, n):
-	"""Yield successive n-sized chunks from lst."""
-	for i in range(0, len(lst), n):
-		yield lst[i:i + n]
+    """Yield successive n-sized chunks from lst."""
+    for i in range(0, len(lst), n):
+        yield lst[i:i + n]
 
 def get_digest(file_path: str) -> str:
 	h = hashlib.sha256()
@@ -105,7 +104,7 @@ def prompt_yes_no(query: str, default: bool = None) -> bool:
 		elif default != None:
 			return default
 		if inp:
-			print('Error: Please answer with "y" or "n"')
+			print('Error: Could not parse input')
 
 MODULE_PATH = os.path.dirname(os.path.realpath(__file__))
 
@@ -118,37 +117,6 @@ class InvalidModelMappingException(ValueError):
 		super().__init__(error)
 
 class ModelWrapper(ABC):
-	r"""
-	A class that provides a unified interface for downloading models and making forward passes.
-	All model inferer classes should extend it.
-
-	Download specifications can be made through overwriting the `_MODEL_MAPPING` property.
-
-	```python
-	_MODEL_MAPPTING = {
-		'model_id': {
-			**PARAMETERS
-		},
-		...
-	}
-	```
-
-	Parameters:
-	
-	model_id		-	Used for temporary caches and debug messages
-
-		url				-	A direct download url
-
-		hash			-	Hash of downloaded file, Can be obtained upon ModelVerificationException
-
-		file			-	File download destination, If set to '.' the filename will be infered
-							from the url (fallback is `model_id` value)
-
-		archive			-	List that contains all files/folders that are to be extracted from
-							the downloaded archive, Mutually exclusive with `file`
-
-		executables		-	List of files that need to have the executable flag set
-	"""
 	_MODEL_DIR = os.path.join(MODULE_PATH, 'models')
 	_MODEL_MAPPING = {}
 
@@ -176,14 +144,14 @@ class ModelWrapper(ABC):
 		return torch.cuda.mem_get_info()
 
 	def _check_for_malformed_model_mapping(self):
-		for map_key, mapping in self._MODEL_MAPPING.items():
-			if 'url' not in mapping:
+		for map_key, map in self._MODEL_MAPPING.items():
+			if 'url' not in map:
 				raise InvalidModelMappingException(self.__class__.__name__, map_key, 'Missing url property')
-			elif not re.search(r'^https?://', mapping['url']):
-				raise InvalidModelMappingException(self.__class__.__name__, map_key, 'Malformed url property: "%s"' % mapping['url'])
-			if 'file' not in mapping and 'archive' not in mapping:
-				mapping['file'] = '.'
-			elif 'file' in mapping and 'archive' in mapping:
+			elif not re.search(r'^https?://', map['url']):
+				raise InvalidModelMappingException(self.__class__.__name__, map_key, 'Malformed url property: "%s"' % map['url'])
+			if 'file' not in map and 'archive' not in map:
+				map['file'] = '.'
+			elif 'file' in map and 'archive' in map:
 				raise InvalidModelMappingException(self.__class__.__name__, map_key, 'Properties file and archive are mutually exclusive')
 
 	async def _download_file(self, url: str, path: str):
@@ -231,37 +199,37 @@ class ModelWrapper(ABC):
 		with `_check_downloaded`) to implement unconventional download logic.
 		'''
 		print('\nDownloading models\n')
-		for map_key, mapping in self._MODEL_MAPPING.items():
+		for map_key, map in self._MODEL_MAPPING.items():
 			if self._check_downloaded_map(map_key):
 				print(f' -- Skipping {map_key} as it\'s already downloaded')
 				continue
 
-			is_archive = 'archive' in mapping
+			is_archive = 'archive' in map
 			if is_archive:
 				download_path = os.path.join(self._temp_working_directory, map_key, '')
 			else:
-				download_path = self._get_file_path(mapping['file'])
+				download_path = self._get_file_path(map['file'])
 			if not os.path.basename(download_path):
 				os.makedirs(download_path, exist_ok=True)
 			if os.path.basename(download_path) in ('', '.'):
-				download_path = os.path.join(download_path, get_filename_from_url(mapping['url'], map_key))
+				download_path = os.path.join(download_path, get_filename_from_url(map['url'], map_key))
 			if not is_archive:
 				download_path += '.part'
 
-			if 'hash' in mapping:
+			if 'hash' in map:
 				downloaded = False
 				if os.path.isfile(download_path):
 					try:
 						print(' -- Found existing file')
-						await self._verify_file(mapping['hash'], download_path)
+						await self._verify_file(map['hash'], download_path)
 						downloaded = True
 					except ModelVerificationException:
 						print(' -- Resuming interrupted download')
 				if not downloaded:
-					await self._download_file(mapping['url'], download_path)
-					await self._verify_file(mapping['hash'], download_path)
+					await self._download_file(map['url'], download_path)
+					await self._verify_file(map['hash'], download_path)
 			else:
-				await self._download_file(mapping['url'], download_path)
+				await self._download_file(map['url'], download_path)
 
 			if download_path.endswith('.part'):
 				p = download_path[:len(download_path)-5]
@@ -270,7 +238,6 @@ class ModelWrapper(ABC):
 
 			if is_archive:
 				extracted_path = os.path.join(os.path.dirname(download_path), 'extracted')
-				print(f' -- Extracting files')
 				shutil.unpack_archive(download_path, extracted_path)
 
 				def get_real_archive_files():
@@ -281,7 +248,7 @@ class ModelWrapper(ABC):
 							archive_files.append(file_path)
 					return archive_files
 
-				for orig, dest in mapping['archive'].items():
+				for orig, dest in map['archive'].items():
 					p1 = os.path.join(extracted_path, orig)
 					if os.path.exists(p1):
 						p2 = self._get_file_path(dest)
@@ -295,21 +262,14 @@ class ModelWrapper(ABC):
 						shutil.move(p1, p2)
 					else:
 						raise InvalidModelMappingException(self.__class__.__name__, map_key, 'File "{orig}" does not exist within archive' +
-										'\nAvailable files:\n%s' % '\n'.join(get_real_archive_files()))
-				if len(mapping['archive']) == 0:
+								        '\nAvailable files:\n%s' % '\n'.join(get_real_archive_files()))
+				if len(map['archive']) == 0:
 					raise InvalidModelMappingException(self.__class__.__name__, map_key, 'No archive files specified' +
-										'\nAvailable files:\n%s' % '\n'.join(get_real_archive_files()))
+					                    '\nAvailable files:\n%s' % '\n'.join(get_real_archive_files()))
 
 				self._grant_execute_permissions(map_key)
 
 			print()
-			self._on_download_finished(map_key)
-
-	def _on_download_finished(self, map_key):
-		'''
-		Can be overwritten to further process the downloaded files
-		'''
-		pass
 
 	def _check_downloaded(self) -> bool:
 		'''
@@ -322,17 +282,17 @@ class ModelWrapper(ABC):
 		return True
 
 	def _check_downloaded_map(self, map_key: str) -> str:
-		mapping = self._MODEL_MAPPING[map_key]
+		map = self._MODEL_MAPPING[map_key]
 
-		if 'file' in mapping:
-			path = mapping['file']
+		if 'file' in map:
+			path = map['file']
 			if os.path.basename(path) in ('.', ''):
-				path = os.path.join(path, get_filename_from_url(mapping['url'], map_key))
+				path = os.path.join(path, get_filename_from_url(map['url'], map_key))
 			if not os.path.exists(self._get_file_path(path)):
 				return False
 		
-		elif 'archive' in mapping:
-			for from_path, to_path in mapping['archive'].items():
+		elif 'archive' in map:
+			for from_path, to_path in map['archive'].items():
 				if os.path.basename(to_path) in ('.', ''):
 					to_path = os.path.join(to_path, os.path.basename(from_path))
 				if not os.path.exists(self._get_file_path(to_path)):
@@ -343,11 +303,11 @@ class ModelWrapper(ABC):
 		return True
 
 	def _grant_execute_permissions(self, map_key: str):
-		mapping = self._MODEL_MAPPING[map_key]
+		map = self._MODEL_MAPPING[map_key]
 
 		if sys.platform == 'linux':
 			# Grant permission to executables
-			for file in mapping.get('executables', []):
+			for file in map.get('executables', []):
 				p = self._get_file_path(file)
 				if os.path.basename(p) in ('', '.'):
 					p = os.path.join(p, file)
@@ -585,15 +545,15 @@ class Quadrilateral(object):
 		src_pts = self.pts.astype(np.float32)
 		self.assigned_direction = direction
 		if direction == 'h':
-			h = max(int(textheight), 2)
-			w = max(int(round(textheight / ratio)), 2)
+			h = int(textheight)
+			w = int(round(textheight / ratio))
 			dst_pts = np.array([[0, 0], [w - 1, 0], [w - 1, h - 1], [0, h - 1]]).astype(np.float32)
 			M, _ = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 5.0)
 			region = cv2.warpPerspective(img, M, (w, h))
 			return region
 		elif direction == 'v':
-			w = max(int(textheight), 2)
-			h = max(int(round(textheight * ratio)), 2)
+			w = int(textheight)
+			h = int(round(textheight * ratio))
 			dst_pts = np.array([[0, 0], [w - 1, 0], [w - 1, h - 1], [0, h - 1]]).astype(np.float32)
 			M, _ = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 5.0)
 			region = cv2.warpPerspective(img, M, (w, h))
@@ -971,157 +931,6 @@ def color_difference(rgb1: List, rgb2: List) -> float:
 	diff[..., 0] *= 0.392
 	diff = np.linalg.norm(diff, axis=2) 
 	return diff.item()
-
-def square_pad_resize(img: np.ndarray, tgt_size: int):
-	h, w = img.shape[:2]
-	pad_h, pad_w = 0, 0
-	
-	# make square image
-	if w < h:
-		pad_w = h - w
-		w += pad_w
-	elif h < w:
-		pad_h = w - h
-		h += pad_h
-
-	pad_size = tgt_size - h
-	if pad_size > 0:
-		pad_h += pad_size
-		pad_w += pad_size
-
-	if pad_h > 0 or pad_w > 0:	
-		img = cv2.copyMakeBorder(img, 0, pad_h, 0, pad_w, cv2.BORDER_CONSTANT)
-
-	down_scale_ratio = tgt_size / img.shape[0]
-	assert down_scale_ratio <= 1
-	if down_scale_ratio < 1:
-		img = cv2.resize(img, (tgt_size, tgt_size), interpolation=cv2.INTER_LINEAR)
-
-	return img, down_scale_ratio, pad_h, pad_w
-
-def det_rearrange_forward(
-	img: np.ndarray, 
-	dbnet_batch_forward: Callable[[np.ndarray, str], Tuple[np.ndarray, np.ndarray]], 
-	tgt_size: int = 1280, 
-	max_batch_size: int = 4, 
-	device='cuda', verbose=False):
-	'''
-	Rearrange image to square batches before feeding into network if following conditions are satisfied: \n
-	1. Extreme aspect ratio
-	2. Is too tall or wide for detect size (tgt_size)
-
-	Returns:
-		DBNet output, mask or None, None if rearrangement is not required
-	'''
-
-	def _unrearrange(patch_lst: List[np.ndarray], transpose: bool, channel=1, pad_num=0):
-		_psize = _h = patch_lst[0].shape[-1]
-		_step = int(ph_step * _psize / patch_size)
-		_pw = int(_psize / pw_num)
-		_h = int(_pw / w * h)
-		tgtmap = np.zeros((channel, _h, _pw), dtype=np.float32)
-		num_patches = len(patch_lst) * pw_num - pad_num
-		for ii, p in enumerate(patch_lst):
-			if transpose:
-				p = einops.rearrange(p, 'c h w -> c w h')
-			for jj in range(pw_num):
-				pidx = ii * pw_num + jj
-				rel_t = rel_step_list[pidx]
-				t = int(round(rel_t * _h))
-				b = min(t + _psize, _h)
-				l = jj * _pw
-				r = l + _pw
-				tgtmap[..., t: b, :] += p[..., : b - t, l: r]
-				if pidx > 0:
-					interleave = _psize - _step
-					tgtmap[..., t: t+interleave, :] /= 2.
-
-				if pidx >= num_patches - 1:
-					break
-
-		if transpose:
-			tgtmap = einops.rearrange(tgtmap, 'c h w -> c w h')
-		return tgtmap[None, ...]
-
-	def _patch2batches(patch_lst: List[np.ndarray], p_num: int, transpose: bool):
-		if transpose:
-			patch_lst = einops.rearrange(patch_lst, '(p_num pw_num) ph pw c -> p_num (pw_num pw) ph c', p_num=p_num)
-		else:
-			patch_lst = einops.rearrange(patch_lst, '(p_num pw_num) ph pw c -> p_num ph (pw_num pw) c', p_num=p_num)
-		
-		batches = [[]]
-		for ii, patch in enumerate(patch_lst):
-
-			if len(batches[-1]) >= max_batch_size:
-				batches.append([])
-			p, down_scale_ratio, pad_h, pad_w = square_pad_resize(patch, tgt_size=tgt_size)
-
-			assert pad_h == pad_w
-			pad_size = pad_h
-			batches[-1].append(p)
-			if verbose:
-				cv2.imwrite(f'result/rearrange_{ii}.png', p[..., ::-1])
-		return batches, down_scale_ratio, pad_size
-
-	h, w = img.shape[:2]
-	transpose = False
-	if h < w:
-		transpose = True
-		h, w = img.shape[1], img.shape[0]
-
-	asp_ratio = h / w
-	down_scale_ratio = h / tgt_size
-
-	# rearrange condition
-	require_rearrange = down_scale_ratio > 2.5 and asp_ratio > 3
-	if not require_rearrange:
-		return None, None
-
-	if verbose:
-		print(f'Input image will be rearranged to square batches before fed into network.\
-			\n Rearranged batches will be saved to result/rearrange_%d.png')
-
-	if transpose:
-		img = einops.rearrange(img, 'h w c -> w h c')
-	
-	pw_num = max(int(np.floor(2 * tgt_size / w)), 2)
-	patch_size = ph = pw_num * w
-
-	ph_num = int(np.ceil(h / ph))
-	ph_step = int((h - ph) / (ph_num - 1)) if ph_num > 1 else 0
-	rel_step_list = []
-	patch_list = []
-	for ii in range(ph_num):
-		t = ii * ph_step
-		b = t + ph
-		rel_step_list.append(t / h)
-		patch_list.append(img[t: b])
-
-	p_num = int(np.ceil(ph_num / pw_num))
-	pad_num = p_num * pw_num - ph_num
-	for ii in range(pad_num):
-		patch_list.append(np.zeros_like(patch_list[0]))
-
-	batches, down_scale_ratio, pad_size = _patch2batches(patch_list, p_num, transpose)
-
-	db_lst, mask_lst = [], []
-	for batch in batches:
-		batch = np.array(batch)
-		db, mask = dbnet_batch_forward(batch, device=device)
-
-		for d, m in zip(db, mask):
-			if pad_size > 0:
-				paddb = int(db.shape[-1] / tgt_size * pad_size)
-				padmsk = int(mask.shape[-1] / tgt_size * pad_size)
-				d = d[..., :-paddb, :-paddb]
-				m = m[..., :-padmsk, :-padmsk]
-			db_lst.append(d)
-			mask_lst.append(m)
-
-	db = _unrearrange(db_lst, transpose, channel=2, pad_num=pad_num)
-	mask = _unrearrange(mask_lst, transpose, channel=1, pad_num=pad_num)
-	return db, mask
-
 
 def main():
 	s1 = [Point(0, 0), Point(0, 2), Point(2, 2), Point(2, 0)]

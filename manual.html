@@ -25,10 +25,26 @@
 
  	<div class="flex one one-600 two-900" style="margin-top: 4em;">
 	  	<div style="margin:50px auto">
+			<div class="slidecontainer">
+				<h2>box-threshold</h2>
+				<input type="range" step="0.1" min="0" max="1" value="0.7" class="slider" id="myBoxRange" oninput="boxValue.innerText = this.value">
+				<p id="boxValue">0.7</p>
+			</div>
+			<div class="slidecontainer">
+				<h2>text-threshold</h2>
+				<input type="range" step="0.1" min="0" max="1" value="0.5" class="slider" id="myTextRange" oninput="textValue.innerText = this.value">
+				<p id="textValue">0.5</p>
+			</div>
 	  		<div class="flex two" id="inputArea">
 	  			<div id="s-area"><h2>Raw Text</h2></div>
 	  			<div id="t-area"><h2>Translation</h2></div>
 	  		</div>
+			<div>
+				<button type="button" class="button" name="submit" onclick="preview()">Preview</button>
+			</div>
+			<div>
+				<button type="button" class="button" name="Show bboxes" onclick="showbboxes()">Show BBoxes</button>
+			</div>
 	  		<div>
 	  			<button type="button" class="button" name="submit" onclick="finish()">Submit</button>
 	  		</div>
@@ -152,7 +168,7 @@ function uploadFile(file, i) {
 
   xhr.addEventListener('readystatechange', function(e) {
     if (xhr.readyState == 4 && xhr.status == 200) {
-      updateProgress(i, 100) 
+      updateProgress(i, 100)
 
       const obj = JSON.parse(xhr.response)
       console.log(obj)
@@ -175,6 +191,8 @@ function uploadFile(file, i) {
 
       	// console.log(obj.trans_result[i-1].s)
       }
+
+	  showbboxes()
     }
     else if (xhr.readyState == 4 && xhr.status != 200) {
       // Error. Inform the user
@@ -182,9 +200,9 @@ function uploadFile(file, i) {
     }
   })
 
-
-
   formData.append('file', file)
+  formData.append('boxvalue', boxValue.innerText)
+  formData.append('textvalue', textValue.innerText)
   xhr.send(formData)
 }
 
@@ -202,6 +220,9 @@ function finish() {
 			't' : inputs[j].value
 		}
 
+		console.log(trans_result[k])
+		console.log(inputs[j].value)
+
 		j++
 		k++
 		console.log("j = "+j)
@@ -215,11 +236,13 @@ function finish() {
 
 	postData = JSON.stringify(postData)
 
+	console.log(postData)
+
 	var url = '/post-translation-result'
 	var xhr = new XMLHttpRequest()
 	var formData = new FormData()
 	xhr.open('POST', url, true)
-	xhr.setRequestHeader("Content-Type", "application/json;charset=UTF-8")
+	xhr.setRequestHeader("Content-Type", "application/json;charset=UTF-8") //charset=UTF-8
 
 	xhr.addEventListener('readystatechange', function(e) {
 	if (xhr.readyState == 4 && xhr.status == 200) {
@@ -234,8 +257,67 @@ function finish() {
 
 
 	xhr.send(postData)
+}
 
+function preview() {
+	var inputs = document.getElementsByTagName("input")
 
+	var trans_result = []
+	var j = ((inputs.length-2)/2)+1 
+	var k = 0
+
+	for (var i = 1; i<=((inputs.length-2)/2); i++) {
+
+		trans_result[k] = {
+			's' : inputs[i].value,
+			't' : inputs[j].value
+		}
+
+		console.log(trans_result[k])
+		console.log(inputs[j].value)
+
+		j++
+		k++
+		console.log("j = "+j)
+	}
+
+	var postData = {
+	    "task_id": task_id,
+	    "status": task_status,
+	    "trans_result_preview": trans_result
+	}
+
+	postData = JSON.stringify(postData)
+
+	console.log(postData)
+
+	var url = '/post-translation-result'
+	var xhr = new XMLHttpRequest()
+	var formData = new FormData()
+	xhr.open('POST', url, true)
+	xhr.setRequestHeader("Content-Type", "application/json;charset=UTF-8")
+	xhr.setRequestHeader("Cache-Control", "no-store, no-cache, must-revalidate, post-check=0, pre-check=0") //charset=UTF-8
+	xhr.setRequestHeader("Pragma", "no-cache")
+
+	xhr.addEventListener('readystatechange', function(e) {
+		if (xhr.readyState == 4 && xhr.status == 200) {
+		  console.log('Sending Request to previewresult for image')
+		  var img = document.getElementsByTagName("img")[0]
+		  img.src = "/previewresult/"+task_id+"?"+ + new Date().getTime();
+		}
+		else if (xhr.readyState == 4 && xhr.status != 200) {
+		  // Error. Inform the user
+		  alert("Request failed!")
+		}
+	})
+
+	xhr.send(postData)
+}
+
+function showbboxes() {
+	console.log('Sending Request to get bbboxes for image ' + task_id)
+	var img = document.getElementsByTagName("img")[0]
+	img.src = "/bboxesresult/"+task_id+"?"+ + new Date().getTime();
 }
 </script>
 </body>

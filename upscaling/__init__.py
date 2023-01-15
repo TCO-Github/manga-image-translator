@@ -17,7 +17,10 @@ def get_upscaler(key: str, *args, **kwargs) -> CommonUpscaler:
         upscaler_cache[key] = upscaler(*args, **kwargs)
     return upscaler_cache[key]
 
-async def prepare(upscaler_key: str):
+async def prepare(upscaler_key: str, upscale_ratio: bool):
+    if upscale_ratio == 1:
+        return
+
     upscaler = get_upscaler(upscaler_key)
     if isinstance(upscaler, OfflineUpscaler):
         await upscaler.download()

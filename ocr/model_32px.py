@@ -11,9 +11,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from detection.ctd_utils.textblock import TextBlock
 from utils import Quadrilateral, chunks
 from .common import OfflineOCR
+from .model_48px_ctc import generate_text_direction
 
 class Model32pxOCR(OfflineOCR):
     _MODEL_MAPPING = {
@@ -45,19 +45,17 @@ class Model32pxOCR(OfflineOCR):
     async def _unload(self):
         del self.model
     
-    async def _forward(self, image: np.ndarray, textlines: List[TextBlock], verbose: bool = False) -> List[TextBlock]:
+    async def _forward(self, image: np.ndarray, textlines: List[Quadrilateral], verbose: bool = False) -> List[Quadrilateral]:
         text_height = 32
         max_chunk_size = 16
 
-        quadrilaterals = list(self.generate_text_direction(textlines))
+        quadrilaterals = list(generate_text_direction(textlines))
         regions = [q.get_transformed_region(image, d, text_height) for q, d in quadrilaterals]
         out_regions = []
 
         perm = range(len(regions))
-        is_quadrilaterals = False
         if len(quadrilaterals) > 0 and isinstance(quadrilaterals[0][0], Quadrilateral):
             perm = sorted(range(len(regions)), key = lambda x: regions[x].shape[1])
-            is_quadrilaterals = True
 
         ix = 0
         for indices in chunks(perm, max_chunk_size):
@@ -122,10 +120,7 @@ class Model32pxOCR(OfflineOCR):
                     cur_region.bg_b += bb
 
                 out_regions.append(cur_region)
-
-        if is_quadrilaterals:
-            return out_regions
-        return textlines
+        return out_regions
 
 
 class ResNet(nn.Module):

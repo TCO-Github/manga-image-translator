@@ -1,9 +1,9 @@
 import cv2
 import numpy as np
 from PIL import ImageFont, ImageDraw, Image
-from typing import List, Tuple
+from typing import List, Union, Tuple
 
-from detection.ctd_utils import TextBlock
+from textblockdetector import TextBlock
 
 WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
@@ -48,15 +48,12 @@ class Line:
 
 def enlarge_window(rect, im_w, im_h, ratio=2.5, aspect_ratio=1.0) -> List:
 	assert ratio > 1.0
-	
+
 	x1, y1, x2, y2 = rect
 	w = x2 - x1
 	h = y2 - y1
 
-	if w <= 0 or h <= 0:
-		return [0, 0, 0, 0]
-
-    # https://numpy.org/doc/stable/reference/generated/numpy.roots.html
+	# https://numpy.org/doc/stable/reference/generated/numpy.roots.html
 	coeff = [aspect_ratio, w+h*aspect_ratio, (1-ratio)*w*h]
 	roots = np.roots(coeff)
 	roots.sort()
@@ -65,8 +62,6 @@ def enlarge_window(rect, im_w, im_h, ratio=2.5, aspect_ratio=1.0) -> List:
 	delta_w = min(x1, im_w - x2, delta_w)
 	delta = min(y1, im_h - y2, delta)
 	rect = np.array([x1-delta_w, y1-delta, x2+delta_w, y2+delta], dtype=np.int64)
-	rect[::2] = np.clip(rect[::2], 0, im_w - 1)
-	rect[1::2] = np.clip(rect[1::2], 0, im_h - 1)
 	return rect.tolist()
 
 def extract_ballon_region(img: np.ndarray, ballon_rect: List, show_process=False, enlarge_ratio=2.0, cal_region_rect=False) -> Tuple[np.ndarray, int, List]:
@@ -149,15 +144,16 @@ def render_lines(
 	line_lst: List[Line], 
 	canvas_h: int, 
 	canvas_w: int, 
-	font: ImageFont.FreeTypeFont, 
+	font: ImageFont.truetype('fonts\DejaVuSans.ttf'), 
 	stroke_width: int, 
 	font_color: Tuple[int] = (0, 0, 0), 
 	stroke_color: Tuple[int] = (255, 255, 255)) -> Image.Image:
 
 	c = Image.new('RGBA', (canvas_w, canvas_h), color = (0, 0, 0, 0))
 	d = ImageDraw.Draw(c)
-	d.fontmode = 'L'
+	d.fontmode = '1'
 	for line in line_lst:
+		print(line.text)
 		d.text((line.pos_x, line.pos_y), line.text, font=font, fill=font_color, stroke_width=stroke_width, stroke_fill=stroke_color)
 	return c
 
@@ -165,7 +161,7 @@ def seg_eng(text: str) -> List[str]:
 	text = text.upper().replace('  ', ' ').replace(' .', '.').replace('\n', ' ')
 	processed_text = ''
 
-	# dumb way to ensure spaces between words
+	# dumb way to insure spaces between words
 	text_len = len(text)
 	for ii, c in enumerate(text):
 		if c in PUNSET_RIGHT_ENG and ii < text_len - 1:
@@ -439,6 +435,7 @@ def render_textblock_list_eng(
 	pilimg = Image.fromarray(img)
 
 	for blk in blk_list:
+		print(seg_eng(blk.translation))
 		words = seg_eng(blk.translation)
 		num_words = len(words)
 		if not num_words:
@@ -570,6 +567,7 @@ def render_textblock_list_eng(
 				else:
 					line.text = line.text + ' ' + word
 					line.length = added_len
+				print(line.text)
 			last_line = lines[-1]
 			canvas_h = last_line.pos_y + line_height
 			canvas_w = int(base_length)

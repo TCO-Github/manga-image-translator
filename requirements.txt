@@ -19,9 +19,9 @@ kornia
 backports.cached-property
 huggingface_hub
 transformers
-langid
+langdetect
 sentencepiece
 editdistance
+fairseq
 numpy
 tensorboardX
-ctranslate2

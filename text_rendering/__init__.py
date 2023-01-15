@@ -3,10 +3,10 @@ from utils import Quadrilateral
 import numpy as np
 import cv2
 
-from utils import findNextPowerOf2, color_difference
-from detection.ctd_utils import TextBlock
 from . import text_render
 from .text_render_eng import render_textblock_list_eng
+from utils import findNextPowerOf2, color_difference
+from textblockdetector.textblock import TextBlock
 
 
 LANGAUGE_ORIENTATION_PRESETS = {
@@ -36,7 +36,6 @@ def fg_bg_compare(fg, bg):
 		bg = (255, 255, 255) if fg_avg <= 127 else (0, 0, 0)
 	return fg, bg
 
-# Can be removed in the future in favor of dispatch_ctd_render
 async def dispatch(img_canvas: np.ndarray, text_mag_ratio: np.integer, translated_sentences: List[str], textlines: List[Quadrilateral], text_regions: List[Quadrilateral], text_direction_overwrite: str, target_language: str, font_size_offset: int = 0) -> np.ndarray:
 	for trans_text, region in zip(translated_sentences, text_regions):
 		if not trans_text:
@@ -66,25 +65,19 @@ async def dispatch(img_canvas: np.ndarray, text_mag_ratio: np.integer, translate
 		img_canvas = render(img_canvas, font_size, text_mag_ratio, trans_text, region, majority_dir, fg, bg, False, font_size_offset)
 	return img_canvas
 
-async def dispatch_ctd_render(img_canvas: np.ndarray, text_mag_ratio: np.integer, translated_sentences: List[str], text_regions: List[TextBlock], text_direction_overwrite: str, target_language: str, font_size_offset: int = 0) -> np.ndarray:
+async def dispatch_ctd_render(img_canvas: np.ndarray, text_mag_ratio: np.integer, translated_sentences: List[str], text_regions: List[TextBlock], text_direction_overwrite: str, font_size_offset: int = 0) -> np.ndarray:
 	for ridx, (trans_text, region) in enumerate(zip(translated_sentences, text_regions)):
 		print(f'text: {region.get_text()} \n trans: {trans_text}')
 		if not trans_text:
 			continue
 
 		majority_dir = None
-		angle_changed = False
 		if text_direction_overwrite in ['h', 'v']:
 			majority_dir = text_direction_overwrite
-		elif target_language in LANGAUGE_ORIENTATION_PRESETS:
-			majority_dir = LANGAUGE_ORIENTATION_PRESETS[target_language]
+		elif 'ENG' in LANGAUGE_ORIENTATION_PRESETS:
+			majority_dir = LANGAUGE_ORIENTATION_PRESETS['ENG']
 		if majority_dir not in ['h', 'v']:
-			if region.vertical:
-				majority_dir = 'v'
-				region.angle += 90
-				angle_changed = True
-			else:
-				majority_dir = 'h'
+			majority_dir = region.majority_dir
 
 		fg, bg = region.get_font_colors()
 		fg, bg = fg_bg_compare(fg, bg)
@@ -93,13 +86,12 @@ async def dispatch_ctd_render(img_canvas: np.ndarray, text_mag_ratio: np.integer
 		if not isinstance(font_size, int):
 			font_size = int(font_size)
 
-		# for i, text in enumerate(region.text):
-		# 	textline = Quadrilateral(np.array(region.lines[i]), text, 1, region.fg_r, region.fg_g, region.fg_b, region.bg_r, region.bg_g, region.bg_b)
-		# 	img_canvas = render(img_canvas, font_size, text_mag_ratio, trans_text, textline, majority_dir, fg, bg, False, font_size_offset)
-
+		textlines = []
+		for ii, text in enumerate(region.text):
+			textlines.append(Quadrilateral(np.array(region.lines[ii]), text, 1, region.fg_r, region.fg_g, region.fg_b, region.bg_r, region.bg_g, region.bg_b))
+		# region_aabb = region.aabb
+		# print(region_aabb.x, region_aabb.y, region_aabb.w, region_aabb.h)
 		img_canvas = render(img_canvas, font_size, text_mag_ratio, trans_text, region, majority_dir, fg, bg, True, font_size_offset)
-		if angle_changed:
-			region.angle -= 90
 	return img_canvas
 
 def render(img_canvas, font_size, text_mag_ratio, trans_text, region, majority_dir, fg, bg, is_ctd, font_size_offset: int = 0):
@@ -144,9 +136,12 @@ def render(img_canvas, font_size, text_mag_ratio, trans_text, region, majority_d
 	h, w, _ = temp_box.shape
 	r_prime = w / h
 
-	r = region.aspect_ratio
-	if is_ctd and majority_dir != 'v':
-		r = 1 / r
+	if is_ctd:
+		r = region.aspect_ratio()
+		if majority_dir != 'v':
+			r = 1 / r
+	else:
+		r = region.aspect_ratio
 
 	w_ext = 0
 	h_ext = 0
@@ -158,6 +153,7 @@ def render(img_canvas, font_size, text_mag_ratio, trans_text, region, majority_d
 		w_ext = int((h * r - w) / 2)
 		box = np.zeros((h, w + w_ext * 2, 4), dtype=np.uint8)
 		box[0:h, w_ext:w_ext+w] = temp_box
+	#region_ext = round(min(w, h) * 0.05)
 	#h_ext += region_ext
 	#w_ext += region_ext
 
@@ -178,7 +174,7 @@ def render(img_canvas, font_size, text_mag_ratio, trans_text, region, majority_d
 	img_canvas = np.clip((img_canvas.astype(np.float32) * (1 - mask_region) + canvas_region.astype(np.float32) * mask_region), 0, 255).astype(np.uint8)
 	return img_canvas
 
-async def dispatch_eng_render(img_canvas: np.ndarray, original_img: np.ndarray, text_regions: Union[List[TextBlock], List[Quadrilateral]], translated_sentences: List[str], font_path: str = 'fonts/comic shanns 2.ttf') -> np.ndarray:
+async def dispatch_eng_render(img_canvas: np.ndarray, original_img: np.ndarray, text_regions: Union[List[TextBlock], List[Quadrilateral]], translated_sentences: List[str], font_path: str) -> np.ndarray:
 	if len(text_regions) == 0:
 		return img_canvas
 
@@ -198,6 +194,7 @@ async def dispatch_eng_render(img_canvas: np.ndarray, original_img: np.ndarray, 
 		return render_textblock_list_eng(img_canvas, blk_list, font_path, size_tol=1.2, original_img=original_img, downscale_constraint=0.5)
 
 	for blk, tr in zip(text_regions, translated_sentences):
+		print(tr)
 		blk.translation = tr
 
 	return render_textblock_list_eng(img_canvas, text_regions, font_path, size_tol=1.2, original_img=original_img, downscale_constraint=0.8)
