@@ -222,7 +222,9 @@ async def manual_trans_task(task_id, texts):
 			print(txt)
 			print(txt['s'])
 			print(txt['f'])
-		TASK_DATA[task_id]['trans_request'] = [{'s': txt['s'], 't': '', 'f': txt['f']} for txt in texts]
+			print(txt['x'])
+			print(txt['y'])
+		TASK_DATA[task_id]['trans_request'] = [{'s': txt['s'], 't': '', 'f': txt['f'], 'x': txt['x'], 'y': txt['y']} for txt in texts]
 	else:
 		TASK_DATA[task_id]['trans_result'] = []
 		print('manual translation complete')
@@ -233,7 +235,7 @@ async def post_translation_result(request):
 	if 'trans_result' in rqjson and 'task_id' in rqjson:
 		task_id = rqjson['task_id']
 		if task_id in TASK_DATA:
-			trans_result = [{'t': r['t'], 'f': r['f']} for r in rqjson['trans_result']]
+			trans_result = [{'t': r['t'], 'f': r['f'], 'x': r['x'], 'y': r['y']} for r in rqjson['trans_result']]
 			TASK_DATA[task_id]['trans_result'] = trans_result
 			while True:
 				await asyncio.sleep(0.1)
@@ -250,7 +252,11 @@ async def post_translation_result(request):
 	if 'trans_result_preview' in rqjson and 'task_id' in rqjson:
 		task_id = rqjson['task_id']
 		if task_id in TASK_DATA:
-			trans_result = [{'t': r['t'], 'f': r['f']} for r in rqjson['trans_result_preview']]
+			try:
+				os.remove("result/" + str(task_id) + "/final_preview.png")
+			except OSError:
+				pass
+			trans_result = [{'t': r['t'], 'f': r['f'], 'x': r['x'], 'y': r['y']} for r in rqjson['trans_result_preview']]
 			TASK_DATA[task_id]['trans_result_preview'] = trans_result
 			while True:
 				await asyncio.sleep(0.1)
@@ -259,6 +265,7 @@ async def post_translation_result(request):
 					break
 				if TASK_STATES[task_id] == 'finished-preview':
 					print('finished-preview in TASK_STATES, returning task with status pending')
+					TASK_STATES[task_id] = 'pending'
 					ret = web.json_response({'task_id': task_id, 'status': 'pending'})
 					break
 			return ret

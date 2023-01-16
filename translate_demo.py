@@ -168,9 +168,6 @@ async def infer(
 		print('No text regions were detected - Skipping')
 		image.save(dst_image_name)
 		return
-	if args.verbose:
-		bboxes = visualize_textblocks(cv2.cvtColor(img_rgb,cv2.COLOR_BGR2RGB), text_regions)
-		cv2.imwrite(f'result/{task_id}/bboxes.png', bboxes)
 
 	print(' -- Running OCR')
 	if mode == 'web' and task_id:
@@ -178,7 +175,12 @@ async def infer(
 	text_regions = await dispatch_ocr(args.ocr, img_rgb, text_regions, args.use_cuda, args.verbose)
 
 	# filter regions by their text
-	text_regions = list(filter(lambda r: count_valuable_text(r.get_text()) > 1 and not r.get_text().isnumeric(), text_regions))
+	#text_regions = list(filter(lambda r: count_valuable_text(r.get_text()) > 1 and not r.get_text().isnumeric(), text_regions))
+
+	if args.verbose:
+		bboxes = visualize_textblocks(cv2.cvtColor(img_rgb,cv2.COLOR_BGR2RGB), text_regions)
+		cv2.imwrite(f'result/{task_id}/bboxes.png', bboxes)
+
 	if detector == 'default':
 		if mode == 'web' and task_id:
 			update_state(task_id, nonce, 'mask_generation')
@@ -187,7 +189,7 @@ async def infer(
 	# in web mode, we can start online translation tasks async
 	if mode == 'web' and task_id and options.get('translator') not in OFFLINE_TRANSLATORS:
 		update_state(task_id, nonce, 'translating')
-		requests.post(f'http://{args.host}:{args.port}/request-translation-internal', json = {'task_id': task_id, 'nonce': nonce, 'texts': [{'s': r.get_text(), 'f': str(r.font_size)} for r in text_regions]}, timeout = 20)
+		requests.post(f'http://{args.host}:{args.port}/request-translation-internal', json = {'task_id': task_id, 'nonce': nonce, 'texts': [{'s': f"{str(i+1)}: {r.get_text()}", 'f': str(r.font_size), "x": r.xyxy[0], "y": r.xyxy[1]} for i, r in enumerate(text_regions)]}, timeout = 20)
 
 	if args.verbose:
 		cv2.imwrite(f'result/{task_id}/mask_final.png', mask)
@@ -241,7 +243,7 @@ async def infer(
 					if translated_sentences == 'error':
 						update_state(task_id, nonce, 'error-lang')
 						return
-			await asyncio.sleep(0.01)
+			await asyncio.sleep(2)
 
 	print(' -- Rendering translated text')
 	output = await GenerateRender(translated_sentences, mode, task_id, nonce, tgt_lang, img_inpainted, img_rgb, text_regions, render_text_direction_overwrite)
@@ -267,6 +269,8 @@ async def GenerateRender(
 	print(' -- Updating Font Size')
 	for i, textregion in enumerate(text_regions):
 		textregion.font_size = float(translated_sentences[i]['f'])
+		textregion.xyxy[0] = int(translated_sentences[i]['x'])
+		textregion.xyxy[1] = int(translated_sentences[i]['y'])
 
 	print(' -- Updating translated_sentences')
 	translated_sentences = [r['t'] for r in translated_sentences]

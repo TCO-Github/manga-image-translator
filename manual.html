@@ -55,10 +55,13 @@
 
  	<div class="flex one one-600 two-900" style="margin-top: 4em;">
 	  	<div style="margin:50px auto">
-	  		<div class="flex three" id="inputArea">
+	  		<div class="flex five" id="inputArea">
+				<!--<div id="b-area"><h2>BBox ID</h2></div>-->
 	  			<div id="s-area"><h2>Raw Text</h2></div>
 	  			<div id="t-area"><h2>Translation</h2></div>
 				<div id="f-area"><h2>Font Size</h2></div>
+				<div id="x-area"><h2>X Position</h2></div>
+				<div id="y-area"><h2>Y Position</h2></div>
 	  		</div>
 	  		<div>
 				<button type="button" class="button" name="submit" onclick="showoriginal()">Show Original</button>
@@ -196,22 +199,34 @@ function uploadFile(file, i) {
       task_id = obj.task_id
       task_status = obj.status
 
+	  //var bArea = document.getElementById('b-area')
       var sArea = document.getElementById('s-area')
       var tArea = document.getElementById('t-area')
 	  var fArea = document.getElementById('f-area')
+	  var xArea = document.getElementById('x-area')
+	  var yArea = document.getElementById('y-area')
 
       for (var i = 0; i < obj.trans_result.length; i++) {
+		//var input_b = document.createElement("h4");
       	var input_s = document.createElement("input")
       	var input_t = document.createElement("input")
 		var input_f = document.createElement("input")
+		var input_x = document.createElement("input")
+		var input_y = document.createElement("input")
 
+		//input_b.textContent = i;
       	input_s.value = obj.trans_result[i].s
       	input_t.value = obj.trans_result[i].t
 		input_f.value = obj.trans_result[i].f
+		input_x.value = obj.trans_result[i].x
+		input_y.value = obj.trans_result[i].y
 
+		//bArea.appendChild(input_b)
       	sArea.appendChild(input_s)
       	tArea.appendChild(input_t)
 		fArea.appendChild(input_f)
+		xArea.appendChild(input_x)
+		yArea.appendChild(input_y)
       }
 	  
 	  document.getElementsByClassName("loaderback")[0].style.display = 'none';
@@ -238,6 +253,8 @@ async function finish() {
 	var sAreaInputs = document.getElementById('s-area').getElementsByTagName("input")
     var tAreaInputs = document.getElementById('t-area').getElementsByTagName("input")
 	var fAreaInputs = document.getElementById('f-area').getElementsByTagName("input")
+	var xAreaInputs = document.getElementById('x-area').getElementsByTagName("input")
+	var yAreaInputs = document.getElementById('y-area').getElementsByTagName("input")
 
 	var trans_result = []
 
@@ -245,7 +262,9 @@ async function finish() {
 		trans_result[i] = {
 			's' : sAreaInputs[i].value,
 			't' : tAreaInputs[i].value,
-			'f' : fAreaInputs[i].value
+			'f' : fAreaInputs[i].value,
+			'x' : xAreaInputs[i].value,
+			'y' : yAreaInputs[i].value
 		}
 	}
 
@@ -254,6 +273,7 @@ async function finish() {
 	    "status": task_status,
 	    "trans_result": trans_result
 	}
+
 	console.log(postData)
 	postData = JSON.stringify(postData)
 
@@ -289,6 +309,8 @@ function preview() {
 	var sAreaInputs = document.getElementById('s-area').getElementsByTagName("input")
     var tAreaInputs = document.getElementById('t-area').getElementsByTagName("input")
 	var fAreaInputs = document.getElementById('f-area').getElementsByTagName("input")
+	var xAreaInputs = document.getElementById('x-area').getElementsByTagName("input")
+	var yAreaInputs = document.getElementById('y-area').getElementsByTagName("input")
 
 	var trans_result = []
 
@@ -296,7 +318,9 @@ function preview() {
 		trans_result[i] = {
 			's' : sAreaInputs[i].value,
 			't' : tAreaInputs[i].value,
-			'f' : fAreaInputs[i].value
+			'f' : fAreaInputs[i].value,
+			'x' : xAreaInputs[i].value,
+			'y' : yAreaInputs[i].value
 		}
 	}
 

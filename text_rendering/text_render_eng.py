@@ -149,11 +149,10 @@ def render_lines(
 	line_lst: List[Line], 
 	canvas_h: int, 
 	canvas_w: int, 
-	font: ImageFont.FreeTypeFont, 
+	font: ImageFont.truetype("fonts/Arial-Unicode-Regular.ttf"), 
 	stroke_width: int, 
 	font_color: Tuple[int] = (0, 0, 0), 
 	stroke_color: Tuple[int] = (255, 255, 255)) -> Image.Image:
-
 	c = Image.new('RGBA', (canvas_w, canvas_h), color = (0, 0, 0, 0))
 	d = ImageDraw.Draw(c)
 	d.fontmode = 'L'
@@ -393,7 +392,6 @@ def layout_lines_aligncenter(
 	# 	cv2.rectangle(rbgmsk, (line.pos_x, line.pos_y), (line.pos_x + line.length, line.pos_y + line_height), (0, 255, 0))
 	# cv2.imshow('mask', rbgmsk)
 	# cv2.waitKey(0)
-
 	return lines
 
 def render_textblock_list_eng(
