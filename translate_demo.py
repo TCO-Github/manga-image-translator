@@ -228,15 +228,18 @@ async def infer(
         await update_state('error-no-txt')
         return
 
+    # render translated texts
+    await update_state('render')
+
     print(' -- Rendering translated text')
     output = await GenerateRender(translated_sentences, mode, task_id, nonce, tgt_lang, img_inpainted, img_rgb, text_regions, render_text_direction_overwrite)
 
     print(' -- Saving results')
-    if mode == 'ws':
-        if args.verbose:
-            # only keep sections in mask
-            cv2.imwrite(f'result/ws_inmask.png', cv2.cvtColor(img_inpainted, cv2.COLOR_RGB2BGRA) * render_mask)
-        return dump_image(cv2.cvtColor(output, cv2.COLOR_RGB2RGBA) * render_mask)
+    #if mode == 'ws':
+    #    if args.verbose:
+    #        # only keep sections in mask
+    #        cv2.imwrite(f'result/ws_inmask.png', cv2.cvtColor(img_inpainted, cv2.COLOR_RGB2BGRA) * render_mask)
+    #    return dump_image(cv2.cvtColor(output, cv2.COLOR_RGB2RGBA) * render_mask)
     img_pil = dump_image(output, img_alpha)
     img_pil.save(dst_image_name)
 
@@ -268,8 +271,6 @@ async def GenerateRender(
 
     print(' -- Updating translated_sentences')
     translated_sentences = [r['t'] for r in translated_sentences]
-    # render translated texts
-    await update_state('render')
 
     render_mask = np.copy(mask)
     render_mask[render_mask < 127] = 0

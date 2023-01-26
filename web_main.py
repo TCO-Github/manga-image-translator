@@ -133,9 +133,10 @@ async def handle_post(request):
                     return web.json_response({'status': 'error'})
     else:
         return web.json_response({'status': 'error'})
+
     try:
         img = Image.open(io.BytesIO(content))
-        img.verify()
+        #img.verify() #This closes the file, and breaks code later down the line.
         if img.width * img.height > 8000**2:
             return web.json_response({'status': 'error-too-large'})
     except Exception:
